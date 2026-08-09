@@ -12,8 +12,9 @@ from zoneinfo import ZoneInfo
 # INSTÄLLNINGAR
 # ============================================================
 
+# Söksträng för Google News RSS
 RSS_URL = (
-    "https://news.google.com/rss/search?"
+    "https://google.com?"
     "q=QuantumScape&hl=en-US&gl=US&ceid=US:en"
 )
 
@@ -25,7 +26,7 @@ DISCORD_WEBHOOK_URL = os.environ.get(
 # Svensk tid
 TIMEZONE = ZoneInfo("Europe/Stockholm")
 
-# Daglig sammanfattning
+# Daglig sammanfattning (Körs efter denna timme)
 DAILY_SUMMARY_HOUR = 18
 
 # Filer som sparas i GitHub repository
@@ -38,7 +39,6 @@ DAILY_FILE = Path("quantumscape_daily.json")
 # ============================================================
 
 def get_rss():
-
     request = Request(
         RSS_URL,
         headers={
@@ -58,7 +58,6 @@ def get_rss():
         request,
         timeout=20
     ) as response:
-
         return response.read().decode(
             "utf-8",
             errors="ignore"
@@ -70,7 +69,6 @@ def get_rss():
 # ============================================================
 
 def get_news():
-
     xml = get_rss()
 
     items = re.findall(
@@ -82,7 +80,6 @@ def get_news():
     news = []
 
     for item in items:
-
         title_match = re.search(
             r"<title\b[^>]*>(.*?)</title>",
             item,
@@ -140,35 +137,28 @@ def get_news():
 # ============================================================
 
 def load_seen():
-
     if not SEEN_FILE.exists():
         return set()
 
     try:
-
         with open(
             SEEN_FILE,
             "r",
             encoding="utf-8"
         ) as file:
-
             return set(
                 json.load(file)
             )
-
     except Exception:
-
         return set()
 
 
 def save_seen(seen):
-
     with open(
         SEEN_FILE,
         "w",
         encoding="utf-8"
     ) as file:
-
         json.dump(
             list(seen),
             file,
@@ -182,9 +172,7 @@ def save_seen(seen):
 # ============================================================
 
 def load_daily():
-
     if not DAILY_FILE.exists():
-
         return {
             "date": "",
             "articles": [],
@@ -192,17 +180,13 @@ def load_daily():
         }
 
     try:
-
         with open(
             DAILY_FILE,
             "r",
             encoding="utf-8"
         ) as file:
-
             return json.load(file)
-
     except Exception:
-
         return {
             "date": "",
             "articles": [],
@@ -211,13 +195,11 @@ def load_daily():
 
 
 def save_daily(data):
-
     with open(
         DAILY_FILE,
         "w",
         encoding="utf-8"
     ) as file:
-
         json.dump(
             data,
             file,
@@ -231,9 +213,7 @@ def save_daily(data):
 # ============================================================
 
 def send_discord(message):
-
     if not DISCORD_WEBHOOK_URL:
-
         raise RuntimeError(
             "DISCORD_WEBHOOK_URL saknas."
         )
@@ -256,9 +236,7 @@ def send_discord(message):
         request,
         timeout=20
     ) as response:
-
         if response.status not in (200, 204):
-
             raise RuntimeError(
                 f"Discord HTTP-fel: {response.status}"
             )
@@ -269,12 +247,10 @@ def send_discord(message):
 # ============================================================
 
 def send_headline(article):
-
     message = (
         f"**[{article['title']}]"
         f"({article['url']})**"
     )
-
     send_discord(message)
 
 
@@ -283,7 +259,6 @@ def send_headline(article):
 # ============================================================
 
 def send_daily_summary(articles, today):
-
     lines = [
         f"**QuantumScape – dagens nyheter "
         f"({today})**",
@@ -291,15 +266,11 @@ def send_daily_summary(articles, today):
     ]
 
     if not articles:
-
         lines.append(
             "Inga nya QuantumScape-nyheter idag."
         )
-
     else:
-
         for article in articles:
-
             lines.append(
                 f"• [{article['title']}]"
                 f"({article['url']})"
@@ -315,7 +286,6 @@ def send_daily_summary(articles, today):
 # ============================================================
 
 def main():
-
     now = datetime.now(
         TIMEZONE
     )
@@ -333,148 +303,59 @@ def main():
     # --------------------------------------------------------
     # Hämta RSS
     # --------------------------------------------------------
-
     news = get_news()
-
-    print(
-        f"RSS innehåller {len(news)} artiklar."
-    )
+    print(f"RSS innehåller {len(news)} artiklar.")
 
     # --------------------------------------------------------
-    # Ladda state
+    # Läs historik
     # --------------------------------------------------------
-
     seen = load_seen()
-    daily = load_daily()
+    daily_data = load_daily()
 
-    # --------------------------------------------------------
-    # NY DAG
-    # --------------------------------------------------------
-
-    if daily.get("date") != today:
-
-        daily = {
+    # Om det är en ny dag, nollställ den dagliga sammanfattningen
+    if daily_data["date"] != today:
+        daily_data = {
             "date": today,
             "articles": [],
             "summary_sent": False
         }
 
-    # --------------------------------------------------------
-    # FÖRSTA STARTEN
-    # --------------------------------------------------------
-
-    if not SEEN_FILE.exists():
-
-        print(
-            "Första körningen."
-        )
-
-        print(
-            "Gamla artiklar registreras "
-            "utan att skickas."
-        )
-
-        for article in news:
-
-            seen.add(
-                article["url"]
-            )
-
-        save_seen(seen)
-        save_daily(daily)
-
-        print(
-            f"{len(seen)} gamla artiklar "
-            "registrerades."
-        )
-
-        return
+    new_articles_found = False
 
     # --------------------------------------------------------
-    # NYA ARTIKLAR
+    # Processa artiklar
     # --------------------------------------------------------
-
-    new_articles = []
-
-    for article in news:
-
-        if article["url"] not in seen:
-
-            new_articles.append(
-                article
-            )
-
-    # Äldsta först
-    new_articles.reverse()
-
-    # --------------------------------------------------------
-    # SKICKA NYA HEADLINES
-    # --------------------------------------------------------
-
-    for article in new_articles:
-
-        print(
-            f"NY: {article['title']}"
-        )
-
-        send_headline(
-            article
-        )
-
-        seen.add(
-            article["url"]
-        )
-
-        daily["articles"].append(
-            article
-        )
+    for article in reversed(news):  # Äldsta först så Discord-flödet blir rättvänt
+        url = article["url"]
+        
+        if url not in seen:
+            seen.add(url)
+            daily_data["articles"].append(article)
+            new_articles_found = True
+            
+            print(f"Ny artikel hittad: {article['title']}")
+            try:
+                send_headline(article)
+            except Exception as e:
+                print(f"Kunde inte skicka till Discord: {e}")
 
     # --------------------------------------------------------
-    # SPARA STATE
+    # Daglig sammanfattning (Körs efter inställd timme)
     # --------------------------------------------------------
+    if now.hour >= DAILY_SUMMARY_HOUR and not daily_data["summary_sent"]:
+        print("Skickar daglig sammanfattning...")
+        try:
+            send_daily_summary(daily_data["articles"], today)
+            daily_data["summary_sent"] = True
+        except Exception as e:
+            print(f"Kunde inte skicka sammanfattning: {e}")
 
+    # --------------------------------------------------------
+    # Spara status till disk
+    # --------------------------------------------------------
     save_seen(seen)
-    save_daily(daily)
-
-    # --------------------------------------------------------
-    # DAGLIG SAMMANFATTNING
-    # --------------------------------------------------------
-
-    if (
-        now.hour >= DAILY_SUMMARY_HOUR
-        and not daily.get(
-            "summary_sent",
-            False
-        )
-    ):
-
-        print(
-            "Skickar dagens sammanfattning."
-        )
-
-        send_daily_summary(
-            daily["articles"],
-            today
-        )
-
-        daily["summary_sent"] = True
-
-        save_daily(
-            daily
-        )
-
-    # --------------------------------------------------------
-    # STATUS
-    # --------------------------------------------------------
-
-    print(
-        f"Nya artiklar denna körning: "
-        f"{len(new_articles)}"
-    )
-
-    print(
-        "Körningen är klar."
-    )
+    save_daily(daily_data)
+    print("Körningen är klar.")
 
 
 if __name__ == "__main__":
