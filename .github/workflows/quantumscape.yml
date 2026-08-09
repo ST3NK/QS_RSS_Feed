@@ -1,0 +1,42 @@
+
+name: QuantumScape Discord Monitor
+
+on:
+  schedule:
+    - cron: "3-59/5 * * * *"
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  quantumscape:
+    runs-on: ubuntu-latest
+
+    steps:
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run QuantumScape monitor
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          python quantumscape_bot.py
+
+      - name: Save state
+        run: |
+          git config user.name "QuantumScape Bot"
+          git config user.email "quantumscape-bot@users.noreply.github.com"
+
+          git add quantumscape_seen.json quantumscape_daily.json
+
+          git diff --cached --quiet || git commit -m "Update QuantumScape news state"
+
+          git push
