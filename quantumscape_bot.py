@@ -13,11 +13,7 @@ from zoneinfo import ZoneInfo
 # ============================================================
 
 # Söksträng för Google News RSS
-RSS_URL = (
-    "https://google.com?"
-    "q=QuantumScape&hl=en-US&gl=US&ceid=US:en"
-)
-
+RSS_URL = "https://yahoo.com"
 # Discord-webhook hämtas från GitHub Secret
 DISCORD_WEBHOOK_URL = os.environ.get(
     "DISCORD_WEBHOOK_URL"
