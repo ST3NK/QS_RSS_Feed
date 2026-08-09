@@ -1,0 +1,34 @@
+name: QuantumScape Discord Bot
+
+on:
+  schedule:
+    # Körs var 5:e minut
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Gör det möjligt att starta boten manuellt
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Ger boten tillåtelse att spara json-filer i ditt repo
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Run Python Script
+      env:
+        DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+      run: python quantumscape_bot.py
+
+    - name: Commit and Push changes
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@://github.com"
+        git add quantumscape_seen.json quantumscape_daily.json
+        git diff --quiet && git diff --staged --quiet || (git commit -m "Update tracker files [skip ci]" && git push)
