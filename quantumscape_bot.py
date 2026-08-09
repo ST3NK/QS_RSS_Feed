@@ -1,225 +1,105 @@
 import json
-import html
-import re
 import os
 from pathlib import Path
 from urllib.request import Request, urlopen
+from urllib.parse import quote
 from datetime import datetime
 from zoneinfo import ZoneInfo
-
 
 # ============================================================
 # INSTÄLLNINGAR
 # ============================================================
 
-# Söksträng för Google News RSS
-RSS_URL = "https://yahoo.com"
-# Discord-webhook hämtas från GitHub Secret
-DISCORD_WEBHOOK_URL = os.environ.get(
-    "DISCORD_WEBHOOK_URL"
-)
+# Sökord för nyheter
+SEARCH_QUERY = "QuantumScape"
 
-# Svensk tid
+# Hämta nycklar från GitHub Secrets
+NEWS_API_KEY = os.environ.get("NEWS_API_KEY")
+DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
+
+# Inställningar för tid och filer
 TIMEZONE = ZoneInfo("Europe/Stockholm")
-
-# Daglig sammanfattning (Körs efter denna timme)
 DAILY_SUMMARY_HOUR = 18
-
-# Filer som sparas i GitHub repository
 SEEN_FILE = Path("quantumscape_seen.json")
 DAILY_FILE = Path("quantumscape_daily.json")
 
-
 # ============================================================
-# RSS
-# ============================================================
-
-def get_rss():
-    request = Request(
-        RSS_URL,
-        headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/120.0.0.0 Safari/537.36"
-            ),
-            "Accept": (
-                "application/rss+xml, "
-                "application/xml, "
-                "text/xml, */*"
-            ),
-            "Accept-Language": "en-US,en;q=0.9"
-        }
-    )
-
-    with urlopen(
-        request,
-        timeout=20
-    ) as response:
-        return response.read().decode(
-            "utf-8",
-            errors="ignore"
-        )
-
-
-# ============================================================
-# PARSA RSS
+# HÄMTA NYHETER FRÅN API
 # ============================================================
 
 def get_news():
-    xml = get_rss()
+    if not NEWS_API_KEY:
+        raise RuntimeError("NEWS_API_KEY saknas i GitHub Secrets.")
+        
+    # Skapa säker URL för sökning (begränsat till engelska nyheter)
+    encoded_query = quote(SEARCH_QUERY)
+    url = f"https://thenewsapi.com{NEWS_API_KEY}&search={encoded_query}&language=en"
 
-    items = re.findall(
-        r"<item\b[^>]*>(.*?)</item>",
-        xml,
-        re.DOTALL | re.IGNORECASE
+    request = Request(
+        url,
+        headers={"User-Agent": "QuantumScape-Bot/1.0"}
     )
 
-    news = []
-
-    for item in items:
-        title_match = re.search(
-            r"<title\b[^>]*>(.*?)</title>",
-            item,
-            re.DOTALL | re.IGNORECASE
-        )
-
-        link_match = re.search(
-            r"<link\b[^>]*>(.*?)</link>",
-            item,
-            re.DOTALL | re.IGNORECASE
-        )
-
-        if not title_match or not link_match:
-            continue
-
-        title = html.unescape(
-            title_match.group(1).strip()
-        )
-
-        url = html.unescape(
-            link_match.group(1).strip()
-        )
-
-        title = re.sub(
-            r"<!\[CDATA\[(.*?)\]\]>",
-            r"\1",
-            title,
-            flags=re.DOTALL
-        )
-
-        url = re.sub(
-            r"<!\[CDATA\[(.*?)\]\]>",
-            r"\1",
-            url,
-            flags=re.DOTALL
-        )
-
-        title = " ".join(
-            title.split()
-        )
-
-        if not title or not url:
-            continue
-
-        news.append({
-            "title": title,
-            "url": url
-        })
-
-    return news
-
+    try:
+        with urlopen(request, timeout=20) as response:
+            data = json.loads(response.read().decode("utf-8"))
+            articles = data.get("data", [])
+            
+            # Formatera om till samma struktur som innan
+            formatted_news = []
+            for art in articles:
+                formatted_news.append({
+                    "title": art.get("title", "").strip(),
+                    "url": art.get("url", "").strip()
+                })
+            return formatted_news
+    except Exception as e:
+        print(f"Kunde inte hämta nyheter från API: {e}")
+        return []
 
 # ============================================================
-# SEEN
+# SEEN FILHANTERING
 # ============================================================
 
 def load_seen():
     if not SEEN_FILE.exists():
         return set()
-
     try:
-        with open(
-            SEEN_FILE,
-            "r",
-            encoding="utf-8"
-        ) as file:
-            return set(
-                json.load(file)
-            )
+        with open(SEEN_FILE, "r", encoding="utf-8") as file:
+            return set(json.load(file))
     except Exception:
         return set()
 
-
 def save_seen(seen):
-    with open(
-        SEEN_FILE,
-        "w",
-        encoding="utf-8"
-    ) as file:
-        json.dump(
-            list(seen),
-            file,
-            indent=2,
-            ensure_ascii=False
-        )
-
+    with open(SEEN_FILE, "w", encoding="utf-8") as file:
+        json.dump(list(seen), file, indent=2, ensure_ascii=False)
 
 # ============================================================
-# DAILY DATA
+# DAILY FILHANTERING
 # ============================================================
 
 def load_daily():
     if not DAILY_FILE.exists():
-        return {
-            "date": "",
-            "articles": [],
-            "summary_sent": False
-        }
-
+        return {"date": "", "articles": [], "summary_sent": False}
     try:
-        with open(
-            DAILY_FILE,
-            "r",
-            encoding="utf-8"
-        ) as file:
+        with open(DAILY_FILE, "r", encoding="utf-8") as file:
             return json.load(file)
     except Exception:
-        return {
-            "date": "",
-            "articles": [],
-            "summary_sent": False
-        }
-
+        return {"date": "", "articles": [], "summary_sent": False}
 
 def save_daily(data):
-    with open(
-        DAILY_FILE,
-        "w",
-        encoding="utf-8"
-    ) as file:
-        json.dump(
-            data,
-            file,
-            indent=2,
-            ensure_ascii=False
-        )
-
+    with open(DAILY_FILE, "w", encoding="utf-8") as file:
+        json.dump(data, file, indent=2, ensure_ascii=False)
 
 # ============================================================
-# DISCORD
+# DISCORD FLÖDE
 # ============================================================
 
 def send_discord(message):
     if not DISCORD_WEBHOOK_URL:
-        raise RuntimeError(
-            "DISCORD_WEBHOOK_URL saknas."
-        )
+        raise RuntimeError("DISCORD_WEBHOOK_URL saknas.")
 
-    payload = json.dumps({
-        "content": message
-    }).encode("utf-8")
-
+    payload = json.dumps({"content": message}).encode("utf-8")
     request = Request(
         DISCORD_WEBHOOK_URL,
         data=payload,
@@ -230,102 +110,49 @@ def send_discord(message):
         method="POST"
     )
 
-    with urlopen(
-        request,
-        timeout=20
-    ) as response:
+    with urlopen(request, timeout=20) as response:
         if response.status not in (200, 204):
-            raise RuntimeError(
-                f"Discord HTTP-fel: {response.status}"
-            )
-
-
-# ============================================================
-# NY HEADLINE
-# ============================================================
+            raise RuntimeError(f"Discord HTTP-fel: {response.status}")
 
 def send_headline(article):
-    message = (
-        f"**[{article['title']}]"
-        f"({article['url']})**"
-    )
+    message = f"**[{article['title']}]({article['url']})**"
     send_discord(message)
 
-
-# ============================================================
-# DAGLIG SAMMANFATTNING
-# ============================================================
-
 def send_daily_summary(articles, today):
-    lines = [
-        f"**QuantumScape – dagens nyheter "
-        f"({today})**",
-        ""
-    ]
-
+    lines = [f"**QuantumScape – dagens nyheter ({today})**", ""]
     if not articles:
-        lines.append(
-            "Inga nya QuantumScape-nyheter idag."
-        )
+        lines.append("Inga nya QuantumScape-nyheter idag.")
     else:
         for article in articles:
-            lines.append(
-                f"• [{article['title']}]"
-                f"({article['url']})"
-            )
-
-    send_discord(
-        "\n".join(lines)
-    )
-
+            lines.append(f"• [{article['title']}]({article['url']})")
+    send_discord("\n".join(lines))
 
 # ============================================================
 # HUVUDPROGRAM
 # ============================================================
 
 def main():
-    now = datetime.now(
-        TIMEZONE
-    )
+    now = datetime.now(TIMEZONE)
+    today = now.strftime("%Y-%m-%d")
 
-    today = now.strftime(
-        "%Y-%m-%d"
-    )
+    print(f"QuantumScape monitor {now.strftime('%Y-%m-%d %H:%M:%S')} (Europe/Stockholm)")
 
-    print(
-        f"QuantumScape monitor "
-        f"{now.strftime('%Y-%m-%d %H:%M:%S')} "
-        f"(Europe/Stockholm)"
-    )
-
-    # --------------------------------------------------------
-    # Hämta RSS
-    # --------------------------------------------------------
     news = get_news()
-    print(f"RSS innehåller {len(news)} artiklar.")
+    print(f"API:et hittade {len(news)} aktuella artiklar.")
 
-    # --------------------------------------------------------
-    # Läs historik
-    # --------------------------------------------------------
     seen = load_seen()
     daily_data = load_daily()
 
-    # Om det är en ny dag, nollställ den dagliga sammanfattningen
     if daily_data["date"] != today:
-        daily_data = {
-            "date": today,
-            "articles": [],
-            "summary_sent": False
-        }
+        daily_data = {"date": today, "articles": [], "summary_sent": False}
 
     new_articles_found = False
 
-    # --------------------------------------------------------
-    # Processa artiklar
-    # --------------------------------------------------------
-    for article in reversed(news):  # Äldsta först så Discord-flödet blir rättvänt
+    for article in reversed(news):
         url = article["url"]
-        
+        if not url or not article["title"]:
+            continue
+            
         if url not in seen:
             seen.add(url)
             daily_data["articles"].append(article)
@@ -337,9 +164,6 @@ def main():
             except Exception as e:
                 print(f"Kunde inte skicka till Discord: {e}")
 
-    # --------------------------------------------------------
-    # Daglig sammanfattning (Körs efter inställd timme)
-    # --------------------------------------------------------
     if now.hour >= DAILY_SUMMARY_HOUR and not daily_data["summary_sent"]:
         print("Skickar daglig sammanfattning...")
         try:
@@ -348,13 +172,9 @@ def main():
         except Exception as e:
             print(f"Kunde inte skicka sammanfattning: {e}")
 
-    # --------------------------------------------------------
-    # Spara status till disk
-    # --------------------------------------------------------
     save_seen(seen)
     save_daily(daily_data)
     print("Körningen är klar.")
-
 
 if __name__ == "__main__":
     main()
