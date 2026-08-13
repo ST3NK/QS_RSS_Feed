@@ -42,7 +42,6 @@ def get_news():
     try:
         with urlopen(request, timeout=20) as response:
             raw = response.read().decode("utf-8")
-            print(f"DEBUG status={response.status} body={raw[:400]}")  # ta bort sen
             data = json.loads(raw)
             articles = data.get("data", [])
             return [
