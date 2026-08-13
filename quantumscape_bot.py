@@ -31,26 +31,25 @@ def get_news():
     if not NEWS_API_KEY:
         raise RuntimeError("NEWS_API_KEY saknas i GitHub Secrets.")
 
-    # Skapa säker URL för sökning (begränsat till engelska nyheter)
     encoded_query = quote(SEARCH_QUERY)
-    url = f"https://thenewsapi.com{NEWS_API_KEY}&search={encoded_query}&language=en"
-    request = Request(
-        url,
-        headers={"User-Agent": "QuantumScape-Bot/1.0"}
+    url = (
+        "https://api.thenewsapi.com/v1/news/all"
+        f"?api_token={NEWS_API_KEY}"
+        f"&search={encoded_query}"
+        "&language=en"
     )
+    request = Request(url, headers={"User-Agent": "QuantumScape-Bot/1.0"})
     try:
         with urlopen(request, timeout=20) as response:
-            data = json.loads(response.read().decode("utf-8"))
+            raw = response.read().decode("utf-8")
+            print(f"DEBUG status={response.status} body={raw[:400]}")  # ta bort sen
+            data = json.loads(raw)
             articles = data.get("data", [])
-
-            # Formatera om till samma struktur som innan
-            formatted_news = []
-            for art in articles:
-                formatted_news.append({
-                    "title": art.get("title", "").strip(),
-                    "url": art.get("url", "").strip()
-                })
-            return formatted_news
+            return [
+                {"title": art.get("title", "").strip(),
+                 "url": art.get("url", "").strip()}
+                for art in articles
+            ]
     except Exception as e:
         print(f"Kunde inte hämta nyheter från API: {e}")
         return []
