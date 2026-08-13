@@ -2,8 +2,7 @@ name: QuantumScape Discord Bot
 
 on:
   schedule:
-    # Körs var 5:e minut
-    - cron: '*/5 * * * *'
+    - cron: '*/15 * * * *'
   workflow_dispatch: # Gör det möjligt att starta boten manuellt
 
 jobs:
