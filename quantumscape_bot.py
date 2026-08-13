@@ -27,35 +27,38 @@ DAILY_FILE = Path("quantumscape_daily.json")
 # HÄMTA NYHETER FRÅN API
 # ============================================================
 
-def get_news():
-    if not NEWS_API_KEY:
-        raise RuntimeError("NEWS_API_KEY saknas i GitHub Secrets.")
-        
-    # Skapa säker URL för sökning (begränsat till engelska nyheter)
-    encoded_query = quote(SEARCH_QUERY)
-    url = f"https://thenewsapi.com{NEWS_API_KEY}&search={encoded_query}&language=en"
+async function getNews() {
+  if (!NEWS_API_KEY) {
+    throw new Error("NEWS_API_KEY saknas i GitHub Secrets.");
+  }
 
-    request = Request(
-        url,
-        headers={"User-Agent": "QuantumScape-Bot/1.0"}
-    )
+  // Skapa säker URL för sökning (begränsat till engelska nyheter)
+  const encodedQuery = encodeURIComponent(SEARCH_QUERY);
+  const url = `https://thenewsapi.com${NEWS_API_KEY}&search=${encodedQuery}&language=en`;
 
-    try:
-        with urlopen(request, timeout=20) as response:
-            data = json.loads(response.read().decode("utf-8"))
-            articles = data.get("data", [])
-            
-            # Formatera om till samma struktur som innan
-            formatted_news = []
-            for art in articles:
-                formatted_news.append({
-                    "title": art.get("title", "").strip(),
-                    "url": art.get("url", "").strip()
-                })
-            return formatted_news
-    except Exception as e:
-        print(f"Kunde inte hämta nyheter från API: {e}")
-        return []
+  try {
+    const response = await fetch(url, {
+      headers: { "User-Agent": "QuantumScape-Bot/1.0" },
+      signal: AbortSignal.timeout(20000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const articles = data.data ?? [];
+
+    // Formatera om till samma struktur som innan
+    return articles.map((art) => ({
+      title: (art.title ?? "").trim(),
+      url: (art.url ?? "").trim(),
+    }));
+  } catch (e) {
+    console.error(`Kunde inte hämta nyheter från API: ${e.message}`);
+    return [];
+  }
+}
 
 # ============================================================
 # SEEN FILHANTERING
